@@ -14,7 +14,7 @@ https://budget-tracker-pwa-app.herokuapp.com/
 
 ### App Demo
 
-![](images/budget-tracker.gif)
+![](images/budget-tracker.mov)
 
 ### Application Functionalities
 
