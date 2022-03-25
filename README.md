@@ -12,9 +12,7 @@ If you have Install npm, then type npm start in your vs code and type localhost:
 ![screenshot](images/budget-tracker.png)
 
 ## Deployed to Heroku
-
-
-https://whispering-dawn-13280.herokuapp.com/
+https://whispering-dawn-13280.herokuapp.com
 
 ## App Demo
 ![click here](images/budget-tracker.mov)
