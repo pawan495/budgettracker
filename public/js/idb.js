@@ -1,95 +1,87 @@
-// create variable to hold db connection
+// =================================================================
+// idb setup
+
+// variable to hold db connection
 let db;
 
-// establish a connection to IndexedDB database called 'budget_tracker' and set it to version 1
-const request = indexedDB.open('budget_tracker', 1);
+// connect to IndexedDB database called 'budget_tracker' set to version 1
+const request = indexedDB.open("budget_tracker", 1);
 
-// this event will emit if the database version changes
-request.onupgradeneeded = function(event) {
-
-    // save a reference to the database
-    const db = event.target.result;
-
-    // create an object store (table) called `new_transaction`, set it to have an auto incrementing primary key of sorts
-    db.createObjectStore('new_transaction', { autoIncrement: true });
+// emits when the database version changes
+request.onupgradeneeded = function (event) {
+   // save a reference to the database
+   const db = event.target.result;
+   // create an object store (table) called `new_budget`, set it to have an auto incrementing primary key
+   db.createObjectStore("new_budget", { autoIncrement: true });
 };
 
-// upon a successful
-request.onsuccess = function(event) {
+// on success
+request.onsuccess = function (event) {
+   // save reference to db in global variable
+   db = event.target.result;
 
-    // when db is successfully created with its object store or simply established a connection, save reference to db in global variable
-    db = event.target.result;
-
-    // check if app is online, if yes run uploadTransaction() function to send all local db data to api
-    if (navigator.onLine) {
-        // todo: uploadTransaction();
-    }
+   if (navigator.onLine) {
+   }
 };
 
-request.onerror = function(event) {
-    // log error here
-    console.log(event.target.errorCode);
+// on error
+request.onerror = function (event) {
+   console.log(event.target.errorCode);
 };
 
-// This function will be executed if we attempt to submit a new transaction and there's no internet connection
+// setup end
+// =================================================================
+
+// function to run when no internet connection
 function saveRecord(record) {
+   // open a new transaction with read and write permissions
+   const transaction = db.transaction(["new_budget"], "readwrite");
 
-    // open a new transaction with the database with read and write permissions
-    const transaction = db.transaction(['new_transaction'], 'readwrite');
+   // access the object store
+   const budgetObjectStore = transaction.objectStore("new_budget");
 
-    // access the object store for `new_transaction`
-    const  budgetObjectStore = transaction.objectStore('new_transaction');
-
-    // add record to your store with add method
-    budgetObjectStore.add(record);
+   // add record
+   budgetObjectStore.add(record);
 }
 
+// function to run when reconnected to the internet
 function uploadTransaction() {
+   // open db transaction, access object store, get all records
+   const transaction = db.transaction(["new_budget"], "readwrite");
+   const budgetObjectStore = transaction.objectStore("new_budget");
+   const getAll = budgetObjectStore.getAll();
 
-    // open a transaction on your db
-    const transaction = db.transaction(['new_transaction'], 'readwrite');
+   // process data on successful .getAll()
+   getAll.onsuccess = function () {
+      // if there was data in indexedDb's store, send it to the api server
+      if (getAll.result.length > 0) {
+         fetch("/api/transaction", {
+            method: "POST",
+            body: JSON.stringify(getAll.result),
+            headers: {
+               Accept: "application/json, text/plain, */*",
+               "Content-Type": "application/json",
+            },
+         })
+            .then((response) => response.json())
+            .then((serverResponse) => {
+               if (serverResponse.message) {
+                  throw new Error(serverResponse);
+               }
+               // open transaction, access object store, clear all items
+               const transaction = db.transaction(["new_budget"], "readwrite");
+               const budgetObjectStore = transaction.objectStore("new_budget");
+               budgetObjectStore.clear();
 
-    // access your object store
-    const budgetObjectStore = transaction.objectStore('new_transaction');
-
-    // get all records from store and set to a variable
-    const getAll = budgetObjectStore.getAll();
-
-    getAll.onsuccess = function() {
-
-        // if there was data in indexedDb's store send it to the api server
-        if (getAll.result.length > 0) {
-            fetch('/api/transaction', {
-                method: 'POST',
-                body: JSON.stringify(getAll.result),
-                headers: {
-                    Accept: 'application/json, text/plain, */*',
-                    'Content-Type': 'application/json'
-                }
+               // send notification
+               alert("You are back online. All data has been uploaded!");
             })
-                .then(response => response.json())
-                .then(serverResponse => {
-                    if (serverResponse.message) {
-                        throw new Error(serverResponse);
-                    }
-
-                    // open one more transaction
-                    const transaction = db.transaction(['new_transaction'], 'readwrite');
-
-                    // access the new_transaction object store
-                    const budgetObjectStore = transaction.objectStore('new_transaction');
-
-                    // clear all items in your store
-                    budgetObjectStore.clear();
-
-                    alert('All saved transactions has been submitted!');
-                })
-                .catch(err => {
-                    console.log(err);
-                });
-        }
-    }
+            .catch((err) => {
+               console.log(err);
+            });
+      }
+   };
 }
 
-// listen for app coming back online
-window.addEventListener('online', uploadTransaction);
+// listen for app coming back online to automatically run function
+window.addEventListener("online", uploadTransaction);
