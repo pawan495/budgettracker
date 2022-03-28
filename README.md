@@ -8,8 +8,8 @@ Giving users a fast and easy way to track their money is important, but allowing
 If you have Install npm, then type npm start in your vs code and type localhost:3001 in your browser. You see NoteTaker there. for install package for npm(https://phoenixnap.com/kb/install-npm-mac)
 
 ## App Screenshot
-
-![screenshot](pic1.png)
+Click here 
+(pic1.png)
 
 ## Deployed to Heroku
 https://whispering-dawn-13280.herokuapp.com
