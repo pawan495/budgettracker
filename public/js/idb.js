@@ -1,95 +1,180 @@
-// create variable to hold db connection
-let db;
+// DB Variables ~ Initial States
+let dbOpenReq;
+let version = 1;
+let db = null;
 
-// establish a connection to IndexedDB database called 'budget_tracker' and set it to version 1
-const request = indexedDB.open('budget_tracker', 1);
+/**-------------------------------------------------------------------------
+ *                       CREATE DATABASE & STORE
+ *------------------------------------------------------------------------**/
 
-// this event will emit if the database version changes
-request.onupgradeneeded = function(event) {
+// Create Database
+function createDB() {
+  // Connect to DB, create if it doesn't exist
+  dbOpenReq = indexedDB.open("budgetDB", version);
 
-    // save a reference to the database
-    const db = event.target.result;
+  // If DB doesn't connect
+  dbOpenReq.addEventListener("error", (err) => {
+    console.warn(err);
+  });
 
-    // create an object store (table) called `new_transaction`, set it to have an auto incrementing primary key of sorts
-    db.createObjectStore('new_transaction', { autoIncrement: true });
-};
+  // If DB connected successfully
+  dbOpenReq.addEventListener("success", (e) => {
+    // DB has opened after upgradeNeeded
+    db = e.target.result;
+    console.log(`${db.name} successfully connected`, db);
 
-// upon a successful
-request.onsuccess = function(event) {
-
-    // when db is successfully created with its object store or simply established a connection, save reference to db in global variable
-    db = event.target.result;
-
-    // check if app is online, if yes run uploadTransaction() function to send all local db data to api
+    // Check if online, if yes then send POST request with transactions to mongoDB
     if (navigator.onLine) {
-        // todo: uploadTransaction();
+      console.log("Client is online");
+      checkIDB();
     }
-};
+  });
 
-request.onerror = function(event) {
-    // log error here
-    console.log(event.target.errorCode);
-};
+  // If versionNumber is changed
+  dbOpenReq.addEventListener("upgradeneeded", (e) => {
+    // Is fired off when: First time opening this DB
+    // OR a new version was passed into open()
+    db = e.target.result;
+    let oldVersion = e.oldVersion;
+    let newVersion = e.newVersion;
+    console.log(`DB upgraded from ver.${oldVersion} to ver.${newVersion}`);
 
-// This function will be executed if we attempt to submit a new transaction and there's no internet connection
+    // Check if store(collection) exists, if not, create it
+    if (!db.objectStoreNames.contains("transactions")) {
+      // We only have one store so I won't assign it to a variable
+      db.createObjectStore("transactions", { keyPath: "id" });
+    }
+  });
+}
+
+/**-------------------------------------------------------------------------
+ *                              HELPER FUNCTIONS
+ *------------------------------------------------------------------------**/
+// Function to generate unique ID's
+function UUID() {
+  return Math.floor((1 + Math.random()) * 0x10000)
+    .toString(16)
+    .substring(1);
+}
+
+// Transaction Function
+function makeTX(storeName, mode) {
+  let tx = db.transaction(storeName, mode);
+  tx.onerror = (err) => {
+    console.warn(err);
+  };
+  return tx;
+}
+
+// Clears all data
+function clearData() {
+  // open a read/write db transaction, ready for clearing the data
+  const tx = db.transaction("transactions", "readwrite");
+
+  // report on the success of the transaction completing, when everything is done
+  tx.oncomplete = function (event) {};
+
+  tx.onerror = function (err) {
+    console.log(err);
+  };
+
+  // create an object store on the transaction
+  const store = tx.objectStore("transactions");
+
+  // Make a request to clear all the data out of the object store
+  const storeRequest = store.clear();
+
+  storeRequest.onsuccess = function (e) {
+    // report the success of our request
+    console.log("Clear data successful");
+  };
+}
+
+function checkIDB() {
+  // Create transaction
+  const tx = makeTX("transactions", "readwrite");
+  console.log(tx);
+  // Will run once transaction is complete
+  tx.oncomplete = (e) => {
+    console.log(`Added transaction`, e);
+  };
+
+  // Target the store
+  const store = tx.objectStore("transactions");
+
+  // POST REQUEST
+  const request = store.getAll();
+  console.log(request);
+
+  // What will happen after the object has been added to the DB (yet before the the transaction is considered complete)
+  request.onsuccess = (e) => {
+    if (request.result.length > 0) {
+      console.log("Added data to database");
+      fetch("/api/transaction/bulk", {
+        method: "POST",
+        body: JSON.stringify(request.result),
+        headers: {
+          Accept: "application/json, text/plain, */*",
+          "Content-Type": "application/json",
+        },
+      })
+        .then((response) => response.json())
+        .then(() => {
+          // Clear data in IDB
+          clearData();
+        })
+        .catch((err) => {
+          console.log(`Fetch Error:`, err);
+        });
+    }
+  };
+
+  // What happens if there is an error
+  request.onerror = (err) => {
+    console.log("Error in request to add transaction");
+  };
+}
+
 function saveRecord(record) {
+  const { name, value, date } = record;
+  console.log(`saveRecord:`, name, value, date);
+  const transaction = {
+    id: UUID(),
+    name,
+    value,
+    date,
+  };
 
-    // open a new transaction with the database with read and write permissions
-    const transaction = db.transaction(['new_transaction'], 'readwrite');
+  // Create transaction
+  const tx = makeTX("transactions", "readwrite");
+  // Will run once transaction is complete
+  tx.oncomplete = (e) => {
+    console.log(`Records saved to IDB`);
+  };
 
-    // access the object store for `new_transaction`
-    const  budgetObjectStore = transaction.objectStore('new_transaction');
+  // Target the store
+  const store = tx.objectStore("transactions");
 
-    // add record to your store with add method
-    budgetObjectStore.add(record);
+  // POST REQUEST
+  const request = store.add(transaction);
+
+  // What will happen after the object has been added to the DB (yet before the the transaction is considered complete)
+  request.onsuccess = (e) => {};
+
+  // What happens if there is an error
+  request.onerror = (err) => {
+    console.log("Error in request to add transaction");
+  };
 }
 
-function uploadTransaction() {
+// Testing to see if window.onLoad is was causing the problem by making this a regular function
+createDB();
 
-    // open a transaction on your db
-    const transaction = db.transaction(['new_transaction'], 'readwrite');
-
-    // access your object store
-    const budgetObjectStore = transaction.objectStore('new_transaction');
-
-    // get all records from store and set to a variable
-    const getAll = budgetObjectStore.getAll();
-
-    getAll.onsuccess = function() {
-
-        // if there was data in indexedDb's store send it to the api server
-        if (getAll.result.length > 0) {
-            fetch('/api/transaction', {
-                method: 'POST',
-                body: JSON.stringify(getAll.result),
-                headers: {
-                    Accept: 'application/json, text/plain, */*',
-                    'Content-Type': 'application/json'
-                }
-            })
-                .then(response => response.json())
-                .then(serverResponse => {
-                    if (serverResponse.message) {
-                        throw new Error(serverResponse);
-                    }
-
-                    // open one more transaction
-                    const transaction = db.transaction(['new_transaction'], 'readwrite');
-
-                    // access the new_transaction object store
-                    const budgetObjectStore = transaction.objectStore('new_transaction');
-
-                    // clear all items in your store
-                    budgetObjectStore.clear();
-
-                    alert('All saved transactions has been submitted!');
-                })
-                .catch(err => {
-                    console.log(err);
-                });
-        }
-    }
-}
-
-// listen for app coming back online
-window.addEventListener('online', uploadTransaction);
+//FIXME: Doesn't work, not even the console.log
+// window.addEventListener("online", () => {
+// Check if online, if yes then send POST request with transactions to mongoDB
+// if (navigator.onLine) {
+//   console.log("Client is online");
+//   checkIDB();
+// }
+// });
