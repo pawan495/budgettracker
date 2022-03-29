@@ -11,7 +11,7 @@ If you have Install npm, then type npm start in your vs code and type localhost:
 ![Click here](pic1.png)
 
 ## Deployed to Heroku
-https://whispering-dawn-13280.herokuapp.com
+https://radiant-inlet-00540.herokuapp.com/
 
 
 
